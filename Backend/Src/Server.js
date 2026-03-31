@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 dotenv.config();
 
 const app = express();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_replace_me");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "mk_1TFcnkEOaAR7ZOhTjJTQjgNr");
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
