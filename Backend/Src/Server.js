@@ -7,12 +7,26 @@ import { v4 as uuidv4 } from "uuid";
 
 dotenv.config();
 
+console.log("Starting Freight Link Pro backend...");
+
+const app = express();
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeKey) {
-  throw new Error("Missing STRIPE_SECRET_KEY environment variable");
+  console.error("Missing STRIPE_SECRET_KEY");
+  process.exit(1);
 }
-const stripe = new Stripe(stripeKey);
+
+console.log("Stripe key found");
+
+let stripe;
+try {
+  stripe = new Stripe(stripeKey);
+  console.log("Stripe initialized");
+} catch (error) {
+  console.error("Stripe init failed:", error);
+  process.exit(1);
+}
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
@@ -57,44 +71,83 @@ app.post("/api/payments/create-intent", async (req, res) => {
       netAmount: (totalAmount - feeAmount) / 100
     });
   } catch (error) {
+    console.error("Payment intent error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.post("/api/contracts/create", async (req, res) => {
   try {
-    const { brokerName, driverName, pickup, delivery, amount } = req.body;
-    const contractId = uuidv4();
+    const {
+      brokerName,
+      driverName,
+      pickup,
+      delivery,
+      amount,
+      brokerClauses = [],
+      jurisdictionClauses = [],
+      brokerSignatureBase64,
+      driverSignatureBase64
+    } = req.body;
 
-    const text = `FREIGHT LINK PRO DISPATCH AGREEMENT
+    const contractId = uuidv4();
+    let contractText = `
+FREIGHT LINK PRO DISPATCH AGREEMENT
 
 Broker: ${brokerName}
 Carrier/Driver: ${driverName}
+
 Pickup: ${pickup}
 Delivery: ${delivery}
 Amount: $${amount}
 
 Broker posting fee: $0.00
 Driver platform fee: 3%
+`.trim();
 
-By signing below, both parties agree this is a legally binding electronic contract.`;
+    for (const clause of brokerClauses) contractText += `\n\n${clause}`;
+    for (const clause of jurisdictionClauses) contractText += `\n\n${clause}`;
+
+    contractText += "\n\nBy signing below, both parties agree this is a legally binding electronic contract.";
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([612, 792]);
-    page.drawText(text, { x: 50, y: 700, size: 11, maxWidth: 510, lineHeight: 14 });
+    page.drawText(contractText, { x: 50, y: 700, size: 11, maxWidth: 510, lineHeight: 14 });
+
+    if (brokerSignatureBase64) {
+      const raw = brokerSignatureBase64.replace(/^data:image\/png;base64,/, "");
+      const img = await pdfDoc.embedPng(Buffer.from(raw, "base64"));
+      page.drawText("Broker Signature", { x: 50, y: 150, size: 10 });
+      page.drawImage(img, { x: 50, y: 70, width: 180, height: 60 });
+    }
+
+    if (driverSignatureBase64) {
+      const raw = driverSignatureBase64.replace(/^data:image\/png;base64,/, "");
+      const img = await pdfDoc.embedPng(Buffer.from(raw, "base64"));
+      page.drawText("Driver Signature", { x: 330, y: 150, size: 10 });
+      page.drawImage(img, { x: 330, y: 70, width: 180, height: 60 });
+    }
 
     const pdfBytes = await pdfDoc.save();
 
     res.json({
       contractId,
+      contractLocked: Boolean(brokerSignatureBase64 && driverSignatureBase64),
+      audit: {
+        signedAt: new Date().toISOString(),
+        ip: req.ip,
+        userAgent: req.headers["user-agent"] || ""
+      },
       pdfBase64: Buffer.from(pdfBytes).toString("base64")
     });
   } catch (error) {
+    console.error("Contract creation error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
+const port = Number(process.env.PORT || 3000);
+
+app.listen(port, "0.0.0.0", () => {
   console.log(`Freight Link Pro backend running on port ${port}`);
 });
