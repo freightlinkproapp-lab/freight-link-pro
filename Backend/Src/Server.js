@@ -7,8 +7,12 @@ import { v4 as uuidv4 } from "uuid";
 
 dotenv.config();
 
-const app = express();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "pk_test_51TFcnfEOaAR7ZOhTdbJX4sjQ37lcGCRbsdaSW3u1qIdYYjhrX8pn7MpcPH2v2g325xnGLKBAQFXYf5mwO9TdjqNB00EdW5ahFL");
+
+const stripeKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeKey) {
+  throw new Error("Missing STRIPE_SECRET_KEY environment variable");
+}
+const stripe = new Stripe(stripeKey);
 
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
