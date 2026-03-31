@@ -1,0 +1,7 @@
+freight-link-pro/
+├── backend/
+├── ios_app/
+├── android_app/
+├── database/
+├── website/
+├── docs/
